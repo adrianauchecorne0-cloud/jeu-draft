@@ -12,7 +12,7 @@ config_version=5
 
 config/name="Jeu Draft"
 config/description="Jeu mobile de draft et d'auto-combat : système de jeu."
-run/main_scene="res://scenes/test_combat.tscn"
+run/main_scene="res://scenes/ecran_combat.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [display]

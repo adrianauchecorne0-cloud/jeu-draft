@@ -128,8 +128,14 @@ func _verifier_moteur() -> void:
 
 
 func _verifier_determinisme(donnees: Donnees) -> void:
-	var c1 := Combat.new(donnees, _armee_demo_bleue(donnees), _armee_demo_rouge(donnees))
-	var c2 := Combat.new(donnees, _armee_demo_bleue(donnees), _armee_demo_rouge(donnees))
+	var groupe := Formations.en_ligne(donnees, "guerrier", 3, 0)
+	_verifier("Formations : un groupe en ligne a le bon nombre d'unités",
+		groupe["cases"].size() == int(donnees.troupes["guerrier"]["unites_par_carte"]))
+	var c1 := _combat_demo(donnees)
+	var c2 := _combat_demo(donnees)
+	_verifier("combats_test.json : le combat de démo se charge (des troupes des deux côtés)",
+		c1.unites.any(func(u: Unite) -> bool: return u.camp == Combat.BLEU)
+		and c1.unites.any(func(u: Unite) -> bool: return u.camp == Combat.ROUGE))
 	var r1 := c1.simuler()
 	var r2 := c2.simuler()
 	_verifier("Pas de hasard : même placement, même combat",
@@ -176,35 +182,17 @@ func _armee(unites: Array, murs: Array = []) -> Dictionary:
 	return {"groupes": groupes, "murs": murs}
 
 
-## 10 points : guerriers (3) + archers (3) + archers (3) + 1 mur (1).
-func _armee_demo_bleue(donnees: Donnees) -> Dictionary:
-	return {
-		"groupes": [
-			Formations.en_ligne(donnees, "guerrier", 3, 0),
-			Formations.en_ligne(donnees, "archer", 1, 3),
-			Formations.en_ligne(donnees, "archer", 6, 3),
-		],
-		"murs": [Vector2i(4, 2)],
-	}
-
-
-## 10 points : colosse (4) + guerriers (3) + archers (3).
-func _armee_demo_rouge(donnees: Donnees) -> Dictionary:
-	return {
-		"groupes": [
-			Formations.en_ligne(donnees, "colosse", 4, 0),
-			Formations.en_ligne(donnees, "guerrier", 1, 1),
-			Formations.en_ligne(donnees, "archer", 5, 3),
-		],
-		"murs": [],
-	}
+## Le combat de démonstration, lu dans data/combats_test.json (bloc « demo »).
+func _combat_demo(donnees: Donnees) -> Combat:
+	var demo: Dictionary = Donnees.lire_fichier("combats_test.json").get("demo", {})
+	return Combat.new(donnees, demo.get("bleu", {}), demo.get("rouge", {}))
 
 
 # --- Récit du combat de démonstration ------------------------------------------
 
 func _raconter_combat_de_demo(donnees: Donnees) -> void:
-	var combat := Combat.new(donnees, _armee_demo_bleue(donnees), _armee_demo_rouge(donnees))
-	_ecrire("[b]COMBAT DE DÉMONSTRATION[/b] (stats de data/troupes.json)")
+	var combat := _combat_demo(donnees)
+	_ecrire("[b]COMBAT DE DÉMONSTRATION[/b] (data/combats_test.json, stats de data/troupes.json)")
 	_ecrire("Cases notées (colonne, ligne). (0, 0) = en haut à gauche. Bleu en bas, rouge en haut.")
 	_ecrire("Au départ :")
 	for u in combat.toutes_les_unites:

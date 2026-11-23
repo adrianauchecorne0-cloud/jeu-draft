@@ -19,12 +19,18 @@ var regles: Dictionary = {}
 ## Charge les trois fichiers de données. Renvoie null si l'un d'eux est illisible.
 static func charger(dossier: String = DOSSIER) -> Donnees:
 	var d := Donnees.new()
-	d.troupes = _sans_commentaires(_lire_json(dossier + "troupes.json"))
-	d.structures = _sans_commentaires(_lire_json(dossier + "structures.json"))
-	d.regles = _sans_commentaires(_lire_json(dossier + "regles.json"))
+	d.troupes = lire_fichier("troupes.json", dossier)
+	d.structures = lire_fichier("structures.json", dossier)
+	d.regles = lire_fichier("regles.json", dossier)
 	if d.troupes.is_empty() or d.structures.is_empty() or d.regles.is_empty():
 		return null
 	return d
+
+
+## Lit n'importe quel fichier JSON de data/ (sans les clés de commentaire).
+## Exemple : lire_fichier("combats_test.json")["demo"].
+static func lire_fichier(nom: String, dossier: String = DOSSIER) -> Dictionary:
+	return _sans_commentaires(_lire_json(dossier + nom))
 
 
 ## Lit un nombre entier dans les règles, par exemple regle_entiere("terrain", "colonnes").

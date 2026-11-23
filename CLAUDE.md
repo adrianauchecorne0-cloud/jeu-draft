@@ -4,13 +4,15 @@
 
 - Projet d'Adrian. Il n'est pas développeur : il fait le game design, Claude écrit le code.
 - Toujours répondre en français, simplement, sans jargon. À chaque étape, dire exactement comment tester : quel bouton, quoi regarder, ce qui est normal.
-- Adrian teste sur son PC Windows avec **Godot 4.7, version standard** (pas .NET).
+- Adrian teste sur son PC Windows avec **Godot 4.7.2, version standard** (pas .NET).
 - Code sur GitHub : `adrianauchecorne0-cloud/jeu-draft` (privé). Adrian récupère le code avec GitHub Desktop (« Fetch origin » puis « Pull origin »), puis F5 dans Godot.
 - **Un commit par étape qui fonctionne**, message en français. Avant de pousser : récupérer d'abord ce qu'Adrian a pu modifier (il peut changer les fichiers de `data/`).
-- Claude teste lui-même avant chaque envoi, avec Godot sans écran (Adrian a donné son accord pour le téléchargement) :
-  - installer : télécharger `https://github.com/godotengine/godot/releases/download/4.7.1-stable/Godot_v4.7.1-stable_linux.x86_64.zip` dans `~/godot_bin/` et le dézipper ;
-  - première fois : `godot --headless --path . --import` (enregistre les classes) ;
-  - lancer la scène F5 : `godot --headless --path . --quit-after 10`, puis vérifier « Résultat : x/x OK » et l'absence de `SCRIPT ERROR`.
+- Claude teste lui-même avant chaque envoi, avec Godot dans son espace de travail (Adrian a donné son accord pour le téléchargement) :
+  - installer : télécharger `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip` dans `~/godot_bin/` et le dézipper (même version qu'Adrian) ;
+  - première fois : `godot --headless --path . --import` (enregistre les classes ; un « Aborted » à la fin est sans gravité) ;
+  - tests automatiques : `godot --headless --path . res://scenes/test_combat.tscn --quit-after 10` → vérifier « Résultat : x/x OK » et l'absence de `SCRIPT ERROR` ;
+  - écran de combat jusqu'au bout : `godot --headless --path . --fixed-fps 60 --quit-after 2000` → la console affiche « Fin de l'affichage : ... » ;
+  - rendu visuel : captures PNG avec `xvfb-run` et `scripts/outils/capture_ecran.gd` (mode d'emploi en tête du fichier), puis les regarder avant d'envoyer.
   - Adrian valide ensuite chez lui ce qui est visuel.
 
 ## La vision
@@ -79,13 +81,17 @@ Intention : pierre-feuille-ciseaux. Le colosse bat les guerriers, les guerriers 
 - Godot 4.7, GDScript, rendu « Compatibilité » (marche partout, y compris les vieux téléphones). Écran de jeu 720 × 1280 (portrait), affiché en 405 × 720 sur PC.
 - **Séparation stricte logique / affichage.**
   - `scripts/logique/` : uniquement des classes `RefCounted`, aucun nœud, aucun affichage. On doit pouvoir simuler des milliers de combats sans écran.
-  - `scripts/affichage/` (à partir de l'étape 2) : lit l'état et l'historique du combat, ne décide jamais rien.
+  - `scripts/affichage/` : lit l'état et l'historique du combat, ne décide jamais rien.
+  - `scripts/tests/` : scène de vérifications automatiques. `scripts/outils/` : outils pour Claude.
 - **Données** : toutes les stats et règles dans `data/*.json`, jamais en dur dans le code. Les clés qui commencent par `_` sont des commentaires pour Adrian, ignorées au chargement. Les nombres JSON arrivent en float dans Godot : toujours convertir avec `int()`.
 - Classes actuelles :
-  - `Donnees` (`donnees.gd`) : charge `data/`, vérifie les champs (`problemes()`).
+  - `Donnees` (`donnees.gd`) : charge `data/`, vérifie les champs (`problemes()`), lit n'importe quel JSON de `data/` (`lire_fichier()`).
   - `Unite` (`unite.gd`) : une unité en combat.
   - `Combat` (`combat.gd`) : le moteur. `Combat.new(donnees, armee_bleue, armee_rouge)`, puis `simuler()` ou `jouer_tour()` pas à pas. Garde un `historique` d'événements par tour (`attaque`, `mort`, `deplacement`) pour l'affichage ; `enregistrer = false` pour les simulations en masse.
   - `Formations` (`formations.gd`) : raccourcis pour créer des groupes (en ligne).
+  - `VueTerrain` (`affichage/vue_terrain.gd`) : dessine la grille, les zones, les murs, les unités (formes + barres de vie) et anime un tour : la première moitié pour les attaques (traits, projectiles, dégâts), la seconde pour les déplacements. `preparer(combat)` juste après `Combat.new()`, puis `debut_tour(evenements)` à chaque tour.
+  - `ecran_combat.gd` (scène `scenes/ecran_combat.tscn`) : fait avancer le combat et pilote l'animation ; boutons Pause/Lecture, Tour +1, vitesse x1/x2/x4, Rejouer.
+- **Combats de test** : `data/combats_test.json`, un bloc par combat (`"demo"` : bleu / rouge au format armée ci-dessous). Adrian peut y modifier les placements pour tester des compositions.
 - **Format d'une armée** (sérialisable, pour enregistrer des compositions plus tard) :
   `{"groupes": [{"type": "guerrier", "cases": [case, ...]}], "murs": [case, ...]}`.
   Une case est vue **du point de vue du joueur** : `(colonne, rang)`, colonne 0 = sa gauche, rang 0 = sa ligne la plus proche du centre, rang 5 = son fond. Accepte `Vector2i` ou `[x, y]`. Le camp rouge est tourné de 180°, donc la même armée peut jouer en bleu ou en rouge.
@@ -109,9 +115,9 @@ Intention : pierre-feuille-ciseaux. Le colosse bat les guerriers, les guerriers 
 
 | # | Étape | Comment Adrian teste | Statut |
 |---|---|---|---|
-| 0 | Projet Godot vide en portrait | Le projet s'ouvre sans erreur (scène `scenes/principal.tscn`, F6 pour la voir seule) | validé par Claude (Godot sans écran), à voir chez Adrian |
-| 1 | Combat automatique sans affichage + fichiers de stats | F5 : « Résultat : 16/16 OK » puis le journal du combat (victoire bleue en 20 tours), à l'écran et dans « Sortie ». Un avertissement jaune « Mur refusé » est normal (test des 4 murs max) | validé par Claude (Godot sans écran), à voir chez Adrian |
-| 2 | Afficher le combat (grille, formes, barres de vie, pause, accélérer) | Regarder le même combat qu'à l'étape 1 | à faire |
+| 0 | Projet Godot vide en portrait | Le projet s'ouvre sans erreur | **validé par Adrian** (23 nov.) |
+| 1 | Combat automatique sans affichage + fichiers de stats | Ouvrir `scenes/test_combat.tscn` puis F6 : « Résultat : 18/18 OK » puis le récit du combat (victoire bleue en 20 tours). L'avertissement « Mur refusé » est normal (test des 4 murs max) | **validé par Adrian** (23 nov., 16/16 à l'époque) |
+| 2 | Afficher le combat (grille, formes, barres de vie, pause, accélérer) | F5 : le combat de démo se joue sur la grille, « Victoire BLEUE ! en 20 tours » à la fin ; tester Pause, Tour +1, x1/x2/x4, Rejouer | validé par Claude (captures), à voir chez Adrian |
 | 3 | Murs et détours, visibles | Un combat de test avec murs : les ennemis contournent | à faire |
 | 4 | Placement à la main (poser, glisser, zone adverse cachée, bouton Combat) | Placer puis lancer | à faire |
 | 5 | Magasin, budget, IA qui achète et place au hasard | Jouer une manche complète | à faire |
