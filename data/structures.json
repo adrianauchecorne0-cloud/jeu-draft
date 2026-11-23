@@ -1,0 +1,8 @@
+{
+	"_aide": "Structures posables sur le terrain. cout = prix en points. max_par_joueur = nombre maximum sur le terrain pour un joueur. Un mur bloque le passage mais pas les tirs, et ne peut pas etre detruit.",
+	"mur": {
+		"nom": "Mur",
+		"cout": 1,
+		"max_par_joueur": 4
+	}
+}

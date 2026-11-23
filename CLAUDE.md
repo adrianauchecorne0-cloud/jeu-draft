@@ -7,7 +7,11 @@
 - Adrian teste sur son PC Windows avec **Godot 4.7, version standard** (pas .NET).
 - Code sur GitHub : `adrianauchecorne0-cloud/jeu-draft` (privé). Adrian récupère le code avec GitHub Desktop (« Fetch origin » puis « Pull origin »), puis F5 dans Godot.
 - **Un commit par étape qui fonctionne**, message en français. Avant de pousser : récupérer d'abord ce qu'Adrian a pu modifier (il peut changer les fichiers de `data/`).
-- Claude ne peut pas lancer Godot dans son espace de travail (téléchargement bloqué). Il vérifie la syntaxe avec gdtoolkit (`pip install gdtoolkit`, puis `gdparse fichier.gd`) et fait tourner les tests réels chez Adrian (scène de test, F5).
+- Claude teste lui-même avant chaque envoi, avec Godot sans écran (Adrian a donné son accord pour le téléchargement) :
+  - installer : télécharger `https://github.com/godotengine/godot/releases/download/4.7.1-stable/Godot_v4.7.1-stable_linux.x86_64.zip` dans `~/godot_bin/` et le dézipper ;
+  - première fois : `godot --headless --path . --import` (enregistre les classes) ;
+  - lancer la scène F5 : `godot --headless --path . --quit-after 10`, puis vérifier « Résultat : x/x OK » et l'absence de `SCRIPT ERROR`.
+  - Adrian valide ensuite chez lui ce qui est visuel.
 
 ## La vision
 
@@ -105,8 +109,8 @@ Intention : pierre-feuille-ciseaux. Le colosse bat les guerriers, les guerriers 
 
 | # | Étape | Comment Adrian teste | Statut |
 |---|---|---|---|
-| 0 | Projet Godot vide en portrait | F5 : fenêtre verticale grise « Étape 0 : le projet fonctionne » | à tester |
-| 1 | Combat automatique sans affichage + fichiers de stats | F5 : vérifications « x/x OK » puis le journal du combat, à l'écran et dans « Sortie » | à faire |
+| 0 | Projet Godot vide en portrait | Le projet s'ouvre sans erreur (scène `scenes/principal.tscn`, F6 pour la voir seule) | validé par Claude (Godot sans écran), à voir chez Adrian |
+| 1 | Combat automatique sans affichage + fichiers de stats | F5 : « Résultat : 16/16 OK » puis le journal du combat (victoire bleue en 20 tours), à l'écran et dans « Sortie ». Un avertissement jaune « Mur refusé » est normal (test des 4 murs max) | validé par Claude (Godot sans écran), à voir chez Adrian |
 | 2 | Afficher le combat (grille, formes, barres de vie, pause, accélérer) | Regarder le même combat qu'à l'étape 1 | à faire |
 | 3 | Murs et détours, visibles | Un combat de test avec murs : les ennemis contournent | à faire |
 | 4 | Placement à la main (poser, glisser, zone adverse cachée, bouton Combat) | Placer puis lancer | à faire |
