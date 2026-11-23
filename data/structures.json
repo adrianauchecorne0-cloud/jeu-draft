@@ -1,8 +1,10 @@
 {
-	"_aide": "Structures posables sur le terrain. cout = prix en points. max_par_joueur = nombre maximum sur le terrain pour un joueur. Un mur bloque le passage mais pas les tirs, et ne peut pas etre detruit.",
+	"_aide": "Structures posables sur le terrain. cout = prix en points. max_par_joueur = nombre maximum pour un joueur dans la vraie partie (le bac a sable est illimite). taille = cote du mur en cases (2 = un carre de 2 x 2 cases). image = chemin d'une image, vide = on dessine un cube. Un mur bloque le passage mais pas les tirs, et ne peut pas etre detruit.",
 	"mur": {
 		"nom": "Mur",
 		"cout": 1,
-		"max_par_joueur": 4
+		"max_par_joueur": 4,
+		"taille": 2,
+		"image": ""
 	}
 }

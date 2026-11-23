@@ -1,7 +1,8 @@
 extends Control
-## Étape 1 : vérifications automatiques du moteur de combat, puis un combat de
-## démonstration raconté tour par tour. Tout s'écrit à l'écran et dans le panneau
-## « Sortie » de Godot. Aucun affichage graphique : on teste la logique seule.
+## Vérifications automatiques du moteur de combat, puis le résumé du combat de
+## démonstration (qui meurt, quand, qui gagne). Tout s'écrit à l'écran et dans le
+## panneau « Sortie » de Godot. Aucun affichage graphique : on teste la logique seule.
+## Pour la lancer : ouvrir scenes/test_combat.tscn puis F6.
 
 const COULEUR_CAMP := ["#6fa8ff", "#ff7070"]
 const NOM_CAMP := ["bleu", "rouge"]
@@ -36,8 +37,8 @@ func _verifier_donnees(donnees: Donnees) -> void:
 	var problemes := donnees.problemes()
 	_verifier("Chaque troupe et structure a toutes ses stats", problemes.is_empty(),
 		", ".join(PackedStringArray(problemes)))
-	_verifier("3 types de troupes et 1 structure",
-		donnees.troupes.size() == 3 and donnees.structures.size() == 1)
+	_verifier("Au moins une troupe, et le mur",
+		donnees.troupes.size() >= 1 and donnees.structures.has("mur"))
 
 
 ## Ces tests utilisent leurs propres stats (pas celles de data/) : ils restent
@@ -126,11 +127,44 @@ func _verifier_moteur() -> void:
 	c = Combat.new(t, _armee([["soldat", Vector2i(8, 0)]], cinq_murs), _armee([["soldat", Vector2i(0, 0)]]))
 	_verifier("Murs : 4 maximum par joueur", c.murs.size() == 4, "%d murs posés" % c.murs.size())
 
+	# Bac à sable : murs illimités.
+	c = Combat.new(t, _armee([["soldat", Vector2i(8, 0)]], cinq_murs), _armee([["soldat", Vector2i(0, 0)]]), true, false)
+	_verifier("Bac à sable : murs illimités", c.murs.size() == 5, "%d murs posés" % c.murs.size())
+
+	# Mur de taille 2 : un carré de 2 x 2 cases.
+	var t2 := _donnees_de_test(14, 2)
+	c = Combat.new(t2, _armee([["soldat", Vector2i(8, 0)]], [Vector2i(0, 4)]), _armee([["soldat", Vector2i(0, 0)]]))
+	_verifier("Mur de taille 2 : il couvre 4 cases",
+		c.murs.size() == 4 and c.blocs_murs.size() == 1
+		and c.murs.has(Vector2i(0, 12)) and c.murs.has(Vector2i(1, 13)),
+		"%d cases de mur" % c.murs.size())
+
+	# Cadence : une attaque tous les 3 tours, sans bouger pendant la recharge.
+	var t3 := _donnees_de_test(12, 1)
+	c = Combat.new(t3, _armee([["cogneur", Vector2i(4, 0)]]), _armee([["sac", Vector2i(4, 0)]]))
+	var cogneur := c.unites[0]
+	var sac := c.unites[1]
+	for i in 7:
+		c.jouer_tour()
+	_verifier("Cadence 3 : 3 coups en 7 tours, sans bouger entre deux coups",
+		sac.vie == 970 and cogneur.cellule == Vector2i(4, 6),
+		"vie du sac : %d, cogneur en %s" % [sac.vie, cogneur.cellule])
+
+	# Conversions de cases : aller-retour entre case vue par un camp et case réelle.
+	var terrain := Terrain.new(t)
+	var aller_retour_ok := true
+	for camp in [Combat.BLEU, Combat.ROUGE]:
+		for case_camp in [Vector2i(0, 0), Vector2i(3, 2), Vector2i(8, 5)]:
+			if terrain.vers_camp(camp, terrain.vers_grille(camp, case_camp)) != case_camp:
+				aller_retour_ok = false
+	_verifier("Terrain : conversions de cases dans les deux sens", aller_retour_ok)
+
 
 func _verifier_determinisme(donnees: Donnees) -> void:
-	var groupe := Formations.en_ligne(donnees, "guerrier", 3, 0)
+	var premier_type: String = donnees.troupes.keys()[0]
+	var groupe := Formations.en_ligne(donnees, premier_type, 3, 0)
 	_verifier("Formations : un groupe en ligne a le bon nombre d'unités",
-		groupe["cases"].size() == int(donnees.troupes["guerrier"]["unites_par_carte"]))
+		groupe["cases"].size() == int(donnees.troupes[premier_type]["unites_par_carte"]))
 	var c1 := _combat_demo(donnees)
 	var c2 := _combat_demo(donnees)
 	_verifier("combats_test.json : le combat de démo se charge (des troupes des deux côtés)",
@@ -156,7 +190,9 @@ func _verifier(description: String, condition: bool, detail: String = "") -> voi
 
 # --- Données et armées de test -------------------------------------------------
 
-func _donnees_de_test() -> Donnees:
+## Petit terrain de test : 9 colonnes, 6 lignes par camp ; avec 14 lignes il y a
+## 2 lignes neutres au milieu, avec 12 les deux camps se touchent.
+func _donnees_de_test(lignes: int = 14, taille_mur: int = 1) -> Donnees:
 	var d := Donnees.new()
 	d.troupes = {
 		"soldat": {"nom": "Soldat", "forme": "cercle", "cout": 3, "unites_par_carte": 1,
@@ -165,10 +201,14 @@ func _donnees_de_test() -> Donnees:
 			"vie": 100, "degats": 20, "portee": 1, "vitesse": 0.5},
 		"tireur": {"nom": "Tireur", "forme": "triangle", "cout": 3, "unites_par_carte": 1,
 			"vie": 60, "degats": 20, "portee": 4, "vitesse": 1},
+		"cogneur": {"nom": "Cogneur", "forme": "carre", "cout": 3, "unites_par_carte": 1,
+			"vie": 1000, "degats": 10, "cadence": 3, "portee": 1, "vitesse": 1},
+		"sac": {"nom": "Sac", "forme": "cercle", "cout": 3, "unites_par_carte": 1,
+			"vie": 1000, "degats": 0, "portee": 1, "vitesse": 0},
 	}
-	d.structures = {"mur": {"nom": "Mur", "cout": 1, "max_par_joueur": 4}}
+	d.structures = {"mur": {"nom": "Mur", "cout": 1, "max_par_joueur": 4, "taille": taille_mur}}
 	d.regles = {
-		"terrain": {"colonnes": 9, "lignes": 14, "lignes_par_camp": 6},
+		"terrain": {"colonnes": 9, "lignes": lignes, "lignes_par_camp": 6},
 		"combat": {"tours_max": 50},
 	}
 	return d
@@ -185,40 +225,26 @@ func _armee(unites: Array, murs: Array = []) -> Dictionary:
 ## Le combat de démonstration, lu dans data/combats_test.json (bloc « demo »).
 func _combat_demo(donnees: Donnees) -> Combat:
 	var demo: Dictionary = Donnees.lire_fichier("combats_test.json").get("demo", {})
-	return Combat.new(donnees, demo.get("bleu", {}), demo.get("rouge", {}))
+	return Combat.new(donnees, demo.get("bleu", {}), demo.get("rouge", {}), true, false)
 
 
-# --- Récit du combat de démonstration ------------------------------------------
+# --- Résumé du combat de démonstration -----------------------------------------
 
 func _raconter_combat_de_demo(donnees: Donnees) -> void:
 	var combat := _combat_demo(donnees)
-	_ecrire("[b]COMBAT DE DÉMONSTRATION[/b] (data/combats_test.json, stats de data/troupes.json)")
-	_ecrire("Cases notées (colonne, ligne). (0, 0) = en haut à gauche. Bleu en bas, rouge en haut.")
-	_ecrire("Au départ :")
+	var nombre := [0, 0]
 	for u in combat.toutes_les_unites:
-		_ecrire("  %s en %s (%d PV)" % [_nom(u), _case(u.cellule), u.vie])
-	for m in combat.murs:
-		_ecrire("  Mur %s en %s" % [NOM_CAMP[combat.murs[m]], _case(m)])
+		nombre[u.camp] += 1
+	_ecrire("[b]COMBAT DE DÉMONSTRATION[/b] (data/combats_test.json, stats de data/troupes.json)")
+	_ecrire("Au départ : %d bleus, %d rouges, %d murs." % [nombre[0], nombre[1], combat.blocs_murs.size()])
 	combat.simuler()
+	var secondes := donnees.regle_decimale("affichage", "secondes_par_tour", 0.1)
 	for i in combat.historique.size():
-		_ecrire("[b]Tour %d[/b]" % (i + 1))
 		for ev in combat.historique[i]:
-			_ecrire("  " + _decrire(combat, ev))
+			if ev["type"] == "mort":
+				_ecrire("  %.1f s : %s est éliminé" % [(i + 1) * secondes, _nom(combat.unite_par_id(ev["unite"]))])
 	_ecrire("")
 	_ecrire("[b]" + _decrire_resultat(combat.resultat) + "[/b]")
-
-
-func _decrire(combat: Combat, ev: Dictionary) -> String:
-	match ev["type"]:
-		"attaque":
-			return "%s frappe %s : -%d PV (reste %d)" % [
-				_nom(combat.unite_par_id(ev["source"])), _nom(combat.unite_par_id(ev["cible"])),
-				ev["degats"], ev["vie_apres"]]
-		"mort":
-			return "%s est éliminé" % _nom(combat.unite_par_id(ev["unite"]))
-		"deplacement":
-			return "%s va en %s" % [_nom(combat.unite_par_id(ev["unite"])), _case(ev["vers"])]
-	return str(ev)
 
 
 func _decrire_resultat(r: Dictionary) -> String:
@@ -236,10 +262,6 @@ func _decrire_resultat(r: Dictionary) -> String:
 
 func _nom(u: Unite) -> String:
 	return "[color=%s]%s %s %d[/color]" % [COULEUR_CAMP[u.camp], u.nom, NOM_CAMP[u.camp], u.id]
-
-
-func _case(c: Vector2i) -> String:
-	return "(%d, %d)" % [c.x, c.y]
 
 
 # --- Sortie -----------------------------------------------------------------

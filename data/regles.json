@@ -1,12 +1,15 @@
 {
-	"_aide": "Regles generales. terrain : taille de la grille et nombre de lignes de chaque camp (le reste au milieu est neutre). combat : nombre de tours maximum avant de departager aux points de vie restants. manches : budget, magasin et fin de partie (utilises a partir de l'etape 5).",
+	"_aide": "Regles generales. terrain : taille de la grille invisible (en petites cases) et nombre de lignes de chaque camp ; le reste au milieu est neutre. combat : nombre de tours maximum avant de departager aux points de vie restants. affichage : duree d'un tour a l'ecran en secondes (plus petit = plus rapide). manches : budget, magasin et fin de partie (pour plus tard).",
 	"terrain": {
-		"colonnes": 9,
-		"lignes": 14,
-		"lignes_par_camp": 6
+		"colonnes": 27,
+		"lignes": 42,
+		"lignes_par_camp": 18
 	},
 	"combat": {
-		"tours_max": 50
+		"tours_max": 900
+	},
+	"affichage": {
+		"secondes_par_tour": 0.1
 	},
 	"manches": {
 		"budget_par_manche": 10,

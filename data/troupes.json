@@ -1,33 +1,27 @@
 {
-	"_aide": "Stats de chaque troupe. cout = prix en points. unites_par_carte = nombre d'unites dans le groupe. vie = points de vie de CHAQUE unite. degats = degats d'une attaque (une attaque par tour). portee = distance d'attaque en cases (1 = contact, diagonales comprises). vitesse = cases par tour (0.5 = une case tous les deux tours). forme = cercle, carre ou triangle. Attention aux virgules : il en faut une entre chaque ligne, sauf apres la derniere d'un bloc.",
-	"guerrier": {
-		"nom": "Guerrier",
-		"forme": "cercle",
-		"cout": 3,
-		"unites_par_carte": 3,
-		"vie": 100,
-		"degats": 20,
-		"portee": 1,
-		"vitesse": 1
-	},
+	"_aide": "Stats de chaque troupe. Un tour = un petit pas de temps (voir regles.json, affichage). cout = prix en points. unites_par_carte = nombre d'unites dans une carte (pour le futur magasin). vie = points de vie de CHAQUE unite. degats = degats d'une attaque. cadence = nombre de tours entre deux attaques (10 = une attaque par seconde a 0.1 s le tour). portee = distance d'attaque en cases (1 = corps a corps, diagonales comprises). vitesse = cases par tour (0.8 = 8 cases par seconde a 0.1 s le tour). forme = cercle, carre ou triangle. image = chemin d'une image (ex. res://images/archer.png) ; vide = on dessine la forme. Pour ajouter une troupe : copier un bloc, changer le nom ; elle apparait toute seule dans le bac a sable. Attention aux virgules.",
 	"archer": {
 		"nom": "Archer",
 		"forme": "triangle",
+		"image": "",
 		"cout": 3,
 		"unites_par_carte": 2,
 		"vie": 60,
 		"degats": 15,
-		"portee": 4,
-		"vitesse": 1
+		"cadence": 12,
+		"portee": 12,
+		"vitesse": 0.6
 	},
-	"colosse": {
-		"nom": "Colosse",
+	"soldat": {
+		"nom": "Soldat",
 		"forme": "carre",
-		"cout": 4,
-		"unites_par_carte": 1,
-		"vie": 400,
-		"degats": 50,
+		"image": "",
+		"cout": 3,
+		"unites_par_carte": 3,
+		"vie": 100,
+		"degats": 20,
+		"cadence": 8,
 		"portee": 1,
-		"vitesse": 0.5
+		"vitesse": 0.8
 	}
 }

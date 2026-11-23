@@ -1,0 +1,10 @@
+Dépose ici les images de tes personnages (PNG, fond transparent, carré, par exemple 128 x 128).
+
+Ensuite, dans data/troupes.json, indique le chemin de l'image dans la troupe :
+    "image": "res://images/archer.png",
+
+L'image remplace la forme de couleur et garde l'effet wiggle (balancement gauche-droite),
+le rebond quand elle marche et le flash quand elle est touchée. Un petit cercle bleu ou rouge
+sous l'image indique son camp.
+
+Pour le mur : même chose dans data/structures.json ("image": "res://images/mur.png").

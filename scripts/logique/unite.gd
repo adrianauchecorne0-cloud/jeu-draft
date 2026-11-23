@@ -15,6 +15,10 @@ var portee: int
 ## si dx² + dy² <= portee_carre. Portée 1 inclut donc les diagonales.
 var portee_carre: float
 var vitesse: float
+## Nombre de tours entre deux attaques (1 = une attaque à chaque tour).
+var cadence: int
+## Tours restants avant de pouvoir frapper à nouveau (0 = prête).
+var recharge: int = 0
 ## Case réelle sur la grille : (colonne, ligne), (0, 0) en haut à gauche.
 var cellule: Vector2i
 ## Réserve de mouvement : +vitesse à chaque tour, une case dès qu'elle atteint 1.
@@ -33,6 +37,7 @@ func _init(p_id: int, p_camp: int, p_type: String, stats: Dictionary, p_cellule:
 	portee = maxi(1, int(stats.get("portee", 1)))
 	portee_carre = (portee + 0.5) * (portee + 0.5)
 	vitesse = float(stats.get("vitesse", 1.0))
+	cadence = maxi(1, int(stats.get("cadence", 1)))
 	cellule = p_cellule
 
 

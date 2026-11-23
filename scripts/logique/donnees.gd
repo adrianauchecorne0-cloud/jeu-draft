@@ -5,8 +5,8 @@ extends RefCounted
 ## Logique pure : aucun nœud, aucun affichage.
 
 const DOSSIER := "res://data/"
-const CHAMPS_TROUPE := ["nom", "forme", "cout", "unites_par_carte", "vie", "degats", "portee", "vitesse"]
-const CHAMPS_STRUCTURE := ["nom", "cout", "max_par_joueur"]
+const CHAMPS_TROUPE := ["nom", "forme", "cout", "unites_par_carte", "vie", "degats", "cadence", "portee", "vitesse"]
+const CHAMPS_STRUCTURE := ["nom", "cout", "max_par_joueur", "taille"]
 
 ## Stats de chaque troupe, rangées par identifiant ("guerrier", "archer", "colosse").
 var troupes: Dictionary = {}
@@ -40,6 +40,12 @@ func regle_entiere(section: String, cle: String) -> int:
 		push_error("Règle manquante dans regles.json : %s / %s" % [section, cle])
 		return 0
 	return int(bloc[cle])
+
+
+## Lit un nombre à virgule dans les règles, avec une valeur par défaut.
+func regle_decimale(section: String, cle: String, defaut: float) -> float:
+	var bloc: Dictionary = regles.get(section, {})
+	return float(bloc.get(cle, defaut))
 
 
 ## Liste des champs manquants dans les fichiers (vide si tout va bien).

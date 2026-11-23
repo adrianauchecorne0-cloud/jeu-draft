@@ -4,18 +4,22 @@ extends RefCounted
 ## On peut le lancer des milliers de fois sans écran (équilibrage, compositions enregistrées).
 ##
 ## Une « armée » est un Dictionary :
-##   {"groupes": [{"type": "guerrier", "cases": [Vector2i(colonne, rang), ...]}, ...],
+##   {"groupes": [{"type": "soldat", "cases": [Vector2i(colonne, rang), ...]}, ...],
 ##    "murs": [Vector2i(colonne, rang), ...]}
-## Les cases sont vues par le joueur : colonne 0 = sa gauche, rang 0 = sa ligne la plus
-## proche du centre, rang 5 = son fond. Le camp rouge est tourné de 180°, donc la même
-## armée peut jouer en bleu (en bas de l'écran) ou en rouge (en haut).
+## Les cases sont vues par le joueur (voir Terrain) : la même armée peut donc jouer
+## en bleu (en bas de l'écran) ou en rouge (en haut, tournée de 180°).
+## Un mur posé en (colonne, rang) couvre un carré de « taille » cases (structures.json)
+## qui s'étend vers la droite et vers le fond du camp.
 
 const BLEU := 0
 const ROUGE := 1
 const NUL := -1
 const EPSILON := 0.0001
+## Nombre maximum de cases explorées quand une unité cherche à contourner des troupes.
+const RECHERCHE_MAX := 600
 
 var donnees: Donnees
+var terrain: Terrain
 var colonnes: int
 var lignes: int
 var lignes_par_camp: int
@@ -27,8 +31,10 @@ var enregistrer: bool
 var unites: Array[Unite] = []
 ## Toutes les unités du combat, mortes comprises (pour l'affichage).
 var toutes_les_unites: Array[Unite] = []
-## Murs posés : case réelle (Vector2i) -> camp propriétaire.
+## Cases couvertes par des murs : case réelle (Vector2i) -> camp propriétaire.
 var murs: Dictionary = {}
+## Un élément par mur posé : {"camp": int, "cases": Array[Vector2i]} (pour l'affichage).
+var blocs_murs: Array = []
 ## Qui est où : case réelle (Vector2i) -> Unite.
 var occupation: Dictionary = {}
 ## Numéro du dernier tour joué (0 avant le premier tour).
@@ -49,21 +55,34 @@ var _prochain_id: int = 1
 var _directions: Array = []
 ## Cache : portée -> liste des décalages (dx, dy) à portée.
 var _disques: Dictionary = {}
+## Champs de distances du tour en cours : (camp, portée) -> distance de chaque case
+## à la position d'attaque la plus proche (-1 = inaccessible).
+var _champs: Dictionary = {}
+## 1 si la case (indice y * colonnes + x) est un mur.
+var _est_mur := PackedByteArray()
 
 
-func _init(p_donnees: Donnees, armee_bleue: Dictionary, armee_rouge: Dictionary, p_enregistrer: bool = true) -> void:
+## limiter_murs = false : murs illimités (bac à sable).
+func _init(p_donnees: Donnees, armee_bleue: Dictionary, armee_rouge: Dictionary,
+		p_enregistrer: bool = true, limiter_murs: bool = true) -> void:
 	donnees = p_donnees
 	enregistrer = p_enregistrer
-	colonnes = donnees.regle_entiere("terrain", "colonnes")
-	lignes = donnees.regle_entiere("terrain", "lignes")
-	lignes_par_camp = donnees.regle_entiere("terrain", "lignes_par_camp")
+	terrain = Terrain.new(donnees)
+	colonnes = terrain.colonnes
+	lignes = terrain.lignes
+	lignes_par_camp = terrain.lignes_par_camp
 	tours_max = donnees.regle_entiere("combat", "tours_max")
 	_directions = [
 		_ordre_directions(Vector2i(0, -1), Vector2i(-1, 0)),
 		_ordre_directions(Vector2i(0, 1), Vector2i(1, 0)),
 	]
-	_placer_armee(armee_bleue, BLEU)
-	_placer_armee(armee_rouge, ROUGE)
+	_placer_unites(armee_bleue, BLEU)
+	_placer_unites(armee_rouge, ROUGE)
+	_placer_murs(armee_bleue, BLEU, limiter_murs)
+	_placer_murs(armee_rouge, ROUGE, limiter_murs)
+	_est_mur.resize(colonnes * lignes)
+	for c in murs:
+		_est_mur[_indice(c)] = 1
 	_verifier_fin()
 
 
@@ -82,8 +101,8 @@ func jouer_tour() -> void:
 		return
 	tour += 1
 	var evenements: Array = []
-	var ont_attaque := _phase_attaques(evenements)
-	_phase_deplacements(ont_attaque, evenements)
+	var occupees := _phase_attaques(evenements)
+	_phase_deplacements(occupees, evenements)
 	if enregistrer:
 		historique.append(evenements)
 	_verifier_fin()
@@ -93,36 +112,36 @@ func unite_par_id(id: int) -> Unite:
 	return _par_id.get(id)
 
 
-## Convertit une case vue par un camp (colonne, rang) en case réelle de la grille.
+## Case vue par un camp -> case réelle (voir Terrain).
 func vers_grille(camp: int, case_camp: Vector2i) -> Vector2i:
-	if camp == BLEU:
-		return Vector2i(case_camp.x, lignes - lignes_par_camp + case_camp.y)
-	return Vector2i(colonnes - 1 - case_camp.x, lignes_par_camp - 1 - case_camp.y)
+	return terrain.vers_grille(camp, case_camp)
 
 
 ## Cette case réelle fait-elle partie de la zone de placement de ce camp ?
 func dans_zone(camp: int, c: Vector2i) -> bool:
-	if not _dans_grille(c):
-		return false
-	if camp == BLEU:
-		return c.y >= lignes - lignes_par_camp
-	return c.y < lignes_par_camp
+	return terrain.dans_zone(camp, c)
 
 
 # --- Phase 1 : attaques --------------------------------------------------------
 
-## Chaque unité qui a un ennemi à portée le frappe. Tout le monde frappe en même
-## temps (dégâts appliqués à la fin), donc deux unités peuvent s'entretuer.
-## Renvoie les unités qui ont attaqué (elles ne bougent pas ce tour-ci).
+## Chaque unité qui a un ennemi à portée le frappe, si elle est rechargée.
+## Tout le monde frappe en même temps (dégâts appliqués à la fin), donc deux unités
+## peuvent s'entretuer. Renvoie les unités qui ont un ennemi à portée : elles ne
+## bougent pas ce tour-ci (même si elles rechargent).
 func _phase_attaques(evenements: Array) -> Dictionary:
-	var ont_attaque := {}
+	var occupees := {}
 	var degats_recus := {}
 	var vie_projetee := {}
 	for u in unites:
+		if u.recharge > 0:
+			u.recharge -= 1
 		var cible := _choisir_cible(u)
 		if cible == null:
 			continue
-		ont_attaque[u] = true
+		occupees[u] = true
+		if u.recharge > 0:
+			continue
+		u.recharge = u.cadence
 		degats_recus[cible] = int(degats_recus.get(cible, 0)) + u.degats
 		if enregistrer:
 			var vie_avant: int = vie_projetee.get(cible, cible.vie)
@@ -140,7 +159,7 @@ func _phase_attaques(evenements: Array) -> Dictionary:
 			if enregistrer:
 				evenements.append({"type": "mort", "unite": u.id})
 	unites = survivantes
-	return ont_attaque
+	return occupees
 
 
 ## La cible : l'ennemi à portée le plus proche ; à égalité, le moins de vie ;
@@ -170,10 +189,11 @@ func _est_prioritaire(e: Unite, d: int, actuelle: Unite, d_actuelle: int) -> boo
 
 # --- Phase 2 : déplacements ----------------------------------------------------
 
-## Les unités qui n'ont pas frappé bougent une par une, en alternant bleu et rouge.
-func _phase_deplacements(ont_attaque: Dictionary, evenements: Array) -> void:
+## Les unités sans ennemi à portée bougent une par une, en alternant bleu et rouge.
+func _phase_deplacements(occupees: Dictionary, evenements: Array) -> void:
+	_champs.clear()
 	for u in _ordre_de_deplacement():
-		if not ont_attaque.has(u):
+		if not occupees.has(u):
 			_deplacer(u, evenements)
 
 
@@ -244,34 +264,97 @@ func _a_un_ennemi_a_portee(u: Unite) -> bool:
 	return false
 
 
-## Prochaine case vers la position d'attaque libre la plus proche.
-## D'abord en contournant murs ET troupes. Si c'est bouché, on vise à travers
-## les troupes (elles finiront par bouger) et on n'avance que si la case est libre.
+## Prochaine case vers la position d'attaque la plus proche.
+## 1. On suit le champ de distances (qui contourne les murs) vers une case libre.
+## 2. Si des troupes bloquent, on cherche un chemin qui les contourne.
+## 3. Sinon, on attend.
 func _prochain_pas(u: Unite) -> Vector2i:
-	var objectifs := _cases_d_attaque(u)
-	if objectifs.is_empty():
+	var champ := _champ(u.camp, u.portee)
+	var distance := champ[_indice(u.cellule)]
+	if distance > 0:
+		for direction in _directions[u.camp]:
+			var voisine: Vector2i = u.cellule + direction
+			if _est_libre(voisine) and champ[_indice(voisine)] == distance - 1:
+				return voisine
+	if distance < 0:
 		return u.cellule
-	var pas := _chercher_chemin(u, objectifs, false)
-	if pas != u.cellule:
-		return pas
-	pas = _chercher_chemin(u, objectifs, true)
-	if pas != u.cellule and not occupation.has(pas):
-		return pas
-	return u.cellule
+	return _contourner(u, champ)
 
 
-## Toutes les cases (hors murs) d'où cette unité pourrait frapper un ennemi.
-func _cases_d_attaque(u: Unite) -> Dictionary:
-	var cases := {}
-	var disque := _disque(u.portee)
+## Champ de distances pour un camp et une portée, calculé une fois par tour.
+func _champ(camp: int, portee: int) -> PackedInt32Array:
+	var cle := camp * 100000 + portee
+	if not _champs.has(cle):
+		_champs[cle] = _calculer_champ(camp, portee)
+	return _champs[cle]
+
+
+## Recherche en largeur à partir de toutes les cases d'où l'on peut frapper
+## un ennemi. Les murs bloquent, les troupes non (elles bougent).
+func _calculer_champ(camp: int, portee: int) -> PackedInt32Array:
+	var distances := PackedInt32Array()
+	distances.resize(colonnes * lignes)
+	distances.fill(-1)
+	var file: Array[Vector2i] = []
+	var disque := _disque(portee)
 	for e in unites:
-		if e.camp == u.camp:
+		if e.camp == camp:
 			continue
 		for decalage in disque:
 			var c: Vector2i = e.cellule + decalage
-			if _dans_grille(c) and not murs.has(c):
-				cases[c] = true
-	return cases
+			if not terrain.dans_grille(c):
+				continue
+			var i := _indice(c)
+			if _est_mur[i] == 0 and distances[i] == -1:
+				distances[i] = 0
+				file.append(c)
+	var k := 0
+	while k < file.size():
+		var c := file[k]
+		k += 1
+		var suivante := distances[_indice(c)] + 1
+		for direction in _directions[BLEU]:
+			var v: Vector2i = c + direction
+			if not terrain.dans_grille(v):
+				continue
+			var i := _indice(v)
+			if _est_mur[i] == 0 and distances[i] == -1:
+				distances[i] = suivante
+				file.append(v)
+	return distances
+
+
+## Recherche en largeur depuis l'unité, en contournant murs ET troupes, vers la
+## case libre la plus proche d'où elle peut frapper. Renvoie le premier pas.
+func _contourner(u: Unite, champ: PackedInt32Array) -> Vector2i:
+	var depart := u.cellule
+	var parents := {depart: depart}
+	var file: Array[Vector2i] = [depart]
+	var directions: Array[Vector2i] = _directions[u.camp]
+	var i := 0
+	while i < file.size() and i < RECHERCHE_MAX:
+		var c := file[i]
+		i += 1
+		if c != depart and champ[_indice(c)] == 0:
+			return _premier_pas(parents, c, depart)
+		for d in directions:
+			var voisine := c + d
+			if parents.has(voisine) or not _est_libre(voisine):
+				continue
+			parents[voisine] = c
+			file.append(voisine)
+	return depart
+
+
+func _premier_pas(parents: Dictionary, arrivee: Vector2i, depart: Vector2i) -> Vector2i:
+	var courant := arrivee
+	while parents[courant] != depart:
+		courant = parents[courant]
+	return courant
+
+
+func _est_libre(c: Vector2i) -> bool:
+	return terrain.dans_grille(c) and _est_mur[_indice(c)] == 0 and not occupation.has(c)
 
 
 func _disque(portee: int) -> Array[Vector2i]:
@@ -284,37 +367,6 @@ func _disque(portee: int) -> Array[Vector2i]:
 					decalages.append(Vector2i(dx, dy))
 		_disques[portee] = decalages
 	return _disques[portee]
-
-
-## Recherche en largeur depuis l'unité ; renvoie la première case du plus court
-## chemin vers un objectif, ou la case de l'unité s'il n'y a pas de chemin.
-func _chercher_chemin(u: Unite, objectifs: Dictionary, ignorer_troupes: bool) -> Vector2i:
-	var depart := u.cellule
-	var parents := {depart: depart}
-	var file: Array[Vector2i] = [depart]
-	var directions: Array[Vector2i] = _directions[u.camp]
-	var i := 0
-	while i < file.size():
-		var c := file[i]
-		i += 1
-		if c != depart and objectifs.has(c):
-			return _premier_pas(parents, c, depart)
-		for d in directions:
-			var voisine := c + d
-			if parents.has(voisine) or not _dans_grille(voisine) or murs.has(voisine):
-				continue
-			if not ignorer_troupes and occupation.has(voisine):
-				continue
-			parents[voisine] = c
-			file.append(voisine)
-	return depart
-
-
-func _premier_pas(parents: Dictionary, arrivee: Vector2i, depart: Vector2i) -> Vector2i:
-	var courant := arrivee
-	while parents[courant] != depart:
-		courant = parents[courant]
-	return courant
 
 
 # --- Fin du combat -------------------------------------------------------------
@@ -347,7 +399,7 @@ func _verifier_fin() -> void:
 
 # --- Placement -----------------------------------------------------------------
 
-func _placer_armee(armee: Dictionary, camp: int) -> void:
+func _placer_unites(armee: Dictionary, camp: int) -> void:
 	for groupe in armee.get("groupes", []):
 		var type_troupe := str(groupe.get("type", ""))
 		if not donnees.troupes.has(type_troupe):
@@ -365,14 +417,25 @@ func _placer_armee(armee: Dictionary, camp: int) -> void:
 			toutes_les_unites.append(u)
 			occupation[c] = u
 			_par_id[u.id] = u
-	var max_murs := int(donnees.structures.get("mur", {}).get("max_par_joueur", 0))
+
+
+func _placer_murs(armee: Dictionary, camp: int, limiter_murs: bool) -> void:
+	var mur: Dictionary = donnees.structures.get("mur", {})
+	var max_murs := int(mur.get("max_par_joueur", 0))
+	var taille := maxi(1, int(mur.get("taille", 1)))
 	var nombre_murs := 0
 	for case_camp in armee.get("murs", []):
-		var c := vers_grille(camp, _en_case(case_camp))
-		if nombre_murs >= max_murs or not _case_libre_dans_zone(camp, c):
+		var cases := terrain.cases_mur(camp, _en_case(case_camp), taille)
+		var possible := not limiter_murs or nombre_murs < max_murs
+		for c in cases:
+			if not _case_libre_dans_zone(camp, c):
+				possible = false
+		if not possible:
 			push_warning("Mur refusé en %s (hors zone, case prise ou trop de murs)" % str(case_camp))
 			continue
-		murs[c] = camp
+		for c in cases:
+			murs[c] = camp
+		blocs_murs.append({"camp": camp, "cases": cases})
 		nombre_murs += 1
 
 
@@ -392,13 +455,13 @@ static func _en_case(v: Variant) -> Vector2i:
 
 # --- Outils --------------------------------------------------------------------
 
+func _indice(c: Vector2i) -> int:
+	return c.y * colonnes + c.x
+
+
 func _ordre_directions(avant: Vector2i, gauche: Vector2i) -> Array[Vector2i]:
 	var ordre: Array[Vector2i] = [avant, gauche, -gauche, -avant]
 	return ordre
-
-
-func _dans_grille(c: Vector2i) -> bool:
-	return c.x >= 0 and c.x < colonnes and c.y >= 0 and c.y < lignes
 
 
 static func _distance_carre(a: Vector2i, b: Vector2i) -> int:
