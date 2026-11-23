@@ -1,0 +1,10 @@
+# Dossier de travail de Godot, recréé automatiquement à l'ouverture du projet
+.godot/
+
+# Identifiants internes créés par l'éditeur Godot : les scènes écrites par Claude
+# utilisent des chemins, donc on ne les suit pas (évite des conflits avec GitHub Desktop)
+*.uid
+
+# Exports (APK, etc.)
+/android/
+/export/
